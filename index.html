@@ -78,6 +78,18 @@ main { flex: 1; overflow-y: auto; padding: 8px 18px 24px; }
 .rm { flex: none; width: 44px; height: 44px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-field); color: var(--muted); font-size: 1.3rem; line-height: 1; }
 .add { background: none; border: 0; padding: 6px 0; color: var(--go); font-weight: 700; font-size: .92rem; }
 .btn.plain { background: none; border-color: var(--line); color: var(--muted); }
+/* Adjuntos */
+.att { display: grid; gap: 8px; }
+#vRecord .att { margin-top: 12px; }
+.att-item { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-field); padding: 6px 6px 6px 8px; }
+.att-item img, .att-item .ext { width: 42px; height: 42px; border-radius: 6px; object-fit: cover; flex: none; }
+.att-item .ext { display: grid; place-items: center; background: var(--bg); color: var(--muted); font-size: .72rem; font-weight: 700; }
+.att-item .meta { flex: 1; min-width: 0; }
+.att-item .meta strong { display: block; font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-item .meta span { font-size: .82rem; color: var(--muted); }
+.att-opts { display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; flex-wrap: wrap; }
+.check { display: flex; align-items: center; gap: 6px; font-size: .88rem; color: var(--muted); }
+.check input { width: 18px; height: 18px; accent-color: var(--go); }
 .recip .name { font-weight: 700; font-size: .95rem; }
 .sugg { display: grid; gap: 6px; }
 .sugg:empty { display: none; }
@@ -188,6 +200,7 @@ a { color: var(--go); }
   <section class="view" id="vRecord">
     <div class="live" id="live" aria-live="polite"></div>
     <div class="err" id="recErr"></div>
+    <div class="att" id="attRec"></div>
   </section>
 
   <!-- Procesando -->
@@ -206,6 +219,7 @@ a { color: var(--go); }
       <button class="add" type="button" id="addCc">+ Añadir en copia</button></div>
     <div class="field"><label for="pSubject">Asunto</label><input id="pSubject"></div>
     <div class="field"><label for="pBody">Mensaje</label><textarea id="pBody"></textarea></div>
+    <div class="field"><span class="label">Adjuntos</span><div class="att" id="attPrev"></div></div>
     <div class="err" id="pErr"></div>
     <details class="transcript"><summary>Lo que dictaste</summary><p id="pTranscript"></p></details>
   </section>
@@ -219,6 +233,8 @@ a { color: var(--go); }
     </div>
   </section>
 </main>
+
+<input type="file" id="fileIn" multiple hidden>
 
 <footer>
   <div class="rec-wrap" id="fRecord">
@@ -471,6 +487,129 @@ function stopRecording(process = true) {
 }
 $('btnRec').onclick = () => recording ? stopRecording(true) : startRecording();
 
+// ---------- Adjuntos ----------
+// Los archivos se guardan en IndexedDB: así sobreviven a las renovaciones de sesión (que salen a Google
+// y vuelven) y el service worker puede dejar ahí lo que se comparte desde otras apps.
+const MAX_TOTAL = 25 * 1024 * 1024; // límite de Gmail para adjuntos
+const idb = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('vdg', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const run = async (mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('kv', mode), r = fn(t.objectStore('kv'));
+      t.oncomplete = () => res(r.result); t.onerror = () => rej(t.error);
+    });
+  };
+  return { get: k => run('readonly', s => s.get(k)), set: (k, v) => run('readwrite', s => s.put(v, k)), del: k => run('readwrite', s => s.delete(k)) };
+})();
+
+let files = [], fileSeq = 0, processing = 0;
+const thumbs = new Map();
+const totalSize = () => files.reduce((n, f) => n + f.size, 0);
+const fmtSize = n => n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB';
+const persistFiles = () => idb.set('files', files.map(({ name, type, size, blob, shrunk }) => ({ name, type, size, blob, shrunk }))).catch(() => {});
+
+async function shrinkImage(item) {
+  if (!store.get('shrink', true) || !/^image\/(jpeg|png|webp)$/.test(item.type) || item.size < 700 * 1024) return item;
+  try {
+    const bmp = await createImageBitmap(item.blob, { imageOrientation: 'from-image' });
+    const k = Math.min(1, 2048 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); // fondo blanco para PNG con transparencia
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    if (bmp.close) bmp.close();
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+    if (!blob || blob.size >= item.size) return item;
+    return { ...item, blob, size: blob.size, type: 'image/jpeg', name: item.name.replace(/\.[^.]+$/, '') + '.jpg', shrunk: item.size };
+  } catch { return item; }
+}
+async function addFiles(list) {
+  const incoming = [...list].filter(f => f && f.size > 0);
+  if (!incoming.length) return;
+  processing++; renderFiles();
+  for (const f of incoming) {
+    const item = await shrinkImage({ name: f.name || 'archivo', type: f.type || 'application/octet-stream', size: f.size, blob: f });
+    files.push({ ...item, id: ++fileSeq });
+  }
+  processing--;
+  await persistFiles(); renderFiles();
+}
+function removeFile(id) {
+  const url = thumbs.get(id); if (url) { URL.revokeObjectURL(url); thumbs.delete(id); }
+  files = files.filter(f => f.id !== id);
+  persistFiles(); renderFiles();
+}
+function clearFiles() {
+  thumbs.forEach(u => URL.revokeObjectURL(u)); thumbs.clear();
+  files = []; idb.del('files').catch(() => {}); renderFiles();
+}
+async function loadFiles() {
+  let saved = [];
+  try { saved = (await idb.get('files')) || []; } catch {}
+  files = [];
+  for (const f of saved) {
+    // Lo que llega desde «Compartir» viene sin procesar: se reducen las fotos igual que al adjuntar.
+    const item = f.fresh ? await shrinkImage({ name: f.name, type: f.type, size: f.size, blob: f.blob }) : f;
+    files.push({ ...item, id: ++fileSeq });
+  }
+  if (saved.some(f => f.fresh)) await persistFiles();
+  renderFiles();
+}
+
+function fileItem(f) {
+  const row = document.createElement('div'); row.className = 'att-item';
+  if (/^image\//.test(f.type)) {
+    if (!thumbs.has(f.id)) thumbs.set(f.id, URL.createObjectURL(f.blob));
+    const img = document.createElement('img'); img.src = thumbs.get(f.id); img.alt = ''; row.append(img);
+  } else {
+    const ext = document.createElement('div'); ext.className = 'ext';
+    ext.textContent = ((f.name.match(/\.([a-z0-9]{1,4})$/i) || [])[1] || 'archivo').toLowerCase(); row.append(ext);
+  }
+  const meta = document.createElement('div'); meta.className = 'meta';
+  const n = document.createElement('strong'); n.textContent = f.name;
+  const sz = document.createElement('span'); sz.textContent = fmtSize(f.size) + (f.shrunk ? ' (reducida desde ' + fmtSize(f.shrunk) + ')' : '');
+  meta.append(n, sz);
+  const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm'; rm.textContent = '×';
+  rm.setAttribute('aria-label', 'Quitar ' + f.name);
+  rm.onclick = () => removeFile(f.id);
+  row.append(meta, rm);
+  return row;
+}
+function renderFiles() {
+  ['attRec', 'attPrev'].forEach(id => {
+    const box = $(id); box.replaceChildren();
+    files.forEach(f => box.append(fileItem(f)));
+    if (processing) box.append(hintEl('Preparando archivos…'));
+    const opts = document.createElement('div'); opts.className = 'att-opts';
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'add';
+    add.textContent = files.length ? '+ Adjuntar otro archivo' : '+ Adjuntar archivo';
+    add.onclick = () => $('fileIn').click();
+    opts.append(add);
+    if (files.length || id === 'attPrev') {
+      const lab = document.createElement('label'); lab.className = 'check';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = store.get('shrink', true);
+      cb.onchange = () => { store.set('shrink', cb.checked); renderFiles(); };
+      lab.append(cb, document.createTextNode('Reducir fotos al adjuntar'));
+      opts.append(lab);
+    }
+    box.append(opts);
+    if (files.length > 1 || totalSize() > MAX_TOTAL) {
+      const t = totalSize();
+      const s = hintEl('Total: ' + fmtSize(t) + (t > MAX_TOTAL ? '. Supera los 25 MB que admite Gmail: quita algún archivo.' : ''));
+      if (t > MAX_TOTAL) s.className = 'err';
+      box.append(s);
+    }
+  });
+}
+$('fileIn').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+
 // ---------- Claude (vía proxy) ----------
 function todayText() {
   const d = new Date(), pad = n => String(n).padStart(2, '0');
@@ -484,7 +623,11 @@ async function buildDraft(transcript) {
     const res = await fetch(settings.workerUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Token': settings.appToken },
-      body: JSON.stringify({ transcript, senderName: settings.senderName || '', today: todayText() }),
+      body: JSON.stringify({
+        // Claude solo recibe los nombres de los adjuntos (para mencionarlos si encaja), nunca su contenido.
+        transcript: files.length ? transcript + '\n\n[Archivos que irán adjuntos: ' + files.map(f => f.name).join(', ') + ']' : transcript,
+        senderName: settings.senderName || '', today: todayText(),
+      }),
     });
     const data = await res.json().catch(() => ({ error: 'Respuesta no válida del proxy (' + res.status + ')' }));
     if (!res.ok || data.error) throw new Error((data.error || 'El proxy respondió ' + res.status) + (data.detail ? '\n' + data.detail : ''));
@@ -615,6 +758,7 @@ function pick(inp, box, p) {
   box.replaceChildren(hintEl('Encontrado en tus contactos: ' + p.detail.toLowerCase()));
 }
 
+let warnedNoFile = false;
 function renderPreview() {
   const d = draft;
   $('pNote').hidden = !d.notes; $('pNote').textContent = d.notes || '';
@@ -626,6 +770,12 @@ function renderPreview() {
   $('pTranscript').textContent = d.transcript || '';
   $('pErr').textContent = '';
   $('btnSave').disabled = false;
+  warnedNoFile = false;
+  if (!files.length && /adjunt/i.test(d.transcript || '')) {
+    $('pNote').hidden = false;
+    $('pNote').textContent = (d.notes ? d.notes + ' ' : '') + 'Has mencionado un adjunto: añádelo abajo, en Adjuntos.';
+  }
+  renderFiles();
   show('vPreview');
 }
 function snapshotPreview() {
@@ -636,7 +786,7 @@ function newDraft(thenRecord) {
   resetRecordView(); show('vRecord');
   if (thenRecord) startRecording();
 }
-$('btnDiscard').onclick = () => newDraft(false);
+$('btnDiscard').onclick = () => { clearFiles(); newDraft(false); };
 $('btnRedo').onclick = () => newDraft(true);
 
 // ---------- Gmail: crear borrador ----------
@@ -671,6 +821,45 @@ function buildMime(d) {
 }
 const base64url = s => b64(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
+// Con adjuntos: multipart/mixed (texto + HTML + archivos), construido como Blob para no duplicar
+// en memoria archivos grandes, y subido con el endpoint de subida de Gmail (admite hasta 35 MB).
+async function fileBase64(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer()), out = [];
+  const CH = 57 * 1024; // múltiplo de 57 bytes = líneas completas de 76 caracteres
+  for (let i = 0; i < bytes.length; i += CH) {
+    const sub = bytes.subarray(i, i + CH);
+    let bin = '';
+    for (let j = 0; j < sub.length; j += 0x8000) bin += String.fromCharCode.apply(null, sub.subarray(j, j + 0x8000));
+    out.push(wrap(btoa(bin)));
+  }
+  return out;
+}
+async function buildMimeWithFiles(d, list) {
+  const mixed = 'vdgm' + Date.now().toString(36), alt = 'vdga' + Date.now().toString(36);
+  const text = d.body.trim().replace(/\r?\n/g, '\r\n');
+  const head = ['MIME-Version: 1.0', 'To: ' + d.to.map(address).join(', ')];
+  if (d.cc.length) head.push('Cc: ' + d.cc.map(address).join(', '));
+  head.push('Subject: ' + header(d.subject.replace(/[\r\n]+/g, ' ').trim()),
+    'Content-Type: multipart/mixed; boundary="' + mixed + '"', '',
+    '--' + mixed, 'Content-Type: multipart/alternative; boundary="' + alt + '"', '',
+    '--' + alt, 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '', wrap(b64(text)),
+    '--' + alt, 'Content-Type: text/html; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '', wrap(b64(toHtml(d.body))),
+    '--' + alt + '--', '');
+  const parts = [head.join('\r\n')];
+  for (const f of list) {
+    const safe = f.name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+    const type = /^[\w.+-]+\/[\w.+-]+$/.test(f.type) ? f.type : 'application/octet-stream';
+    parts.push(['--' + mixed,
+      'Content-Type: ' + type + '; name="' + (ascii(f.name) ? safe : header(f.name)) + '"',
+      // Nombres con tildes: codificación RFC 2047, la misma que usa Gmail en sus propios correos.
+      'Content-Disposition: attachment; filename="' + (ascii(f.name) ? safe : header(f.name)) + '"',
+      'Content-Transfer-Encoding: base64', '', ''].join('\r\n'));
+    parts.push(...await fileBase64(f.blob));
+  }
+  parts.push('--' + mixed + '--\r\n');
+  return new Blob(parts, { type: 'message/rfc822' });
+}
+
 $('btnSave').onclick = async () => {
   const d = snapshotPreview();
   const bad = [...d.to, ...d.cc].filter(r => !isEmail(r.email));
@@ -678,27 +867,45 @@ $('btnSave').onclick = async () => {
     $('pErr').textContent = bad.length ? 'Falta o no es válido el email de: ' + bad.map(r => r.name || r.email || 'un destinatario').join(', ') + '.' : 'Añade al menos un destinatario.';
     return;
   }
+  if (processing) { $('pErr').textContent = 'Espera a que terminen de prepararse los archivos.'; return; }
+  if (totalSize() > MAX_TOTAL) { $('pErr').textContent = 'Los adjuntos ocupan ' + fmtSize(totalSize()) + ' y Gmail admite 25 MB. Quita algún archivo.'; return; }
+  if (!files.length && /adjunt/i.test(d.body) && !warnedNoFile) {
+    warnedNoFile = true;
+    $('pErr').textContent = 'El mensaje menciona un adjunto, pero no has añadido ningún archivo. Pulsa Guardar otra vez para guardarlo así.';
+    return;
+  }
   $('btnSave').disabled = true;
   await saveToGmail(d);
 };
 
 async function saveToGmail(d) {
-  busy('Guardando en Borradores…');
-  // Si hay que renovar la sesión, el borrador se guarda aquí y se recupera al volver de Google.
+  busy('Guardando en Borradores…' + (files.length ? ' (' + files.length + (files.length === 1 ? ' adjunto, ' : ' adjuntos, ') + fmtSize(totalSize()) + ')' : ''));
+  // Si hay que renovar la sesión, el borrador se guarda aquí (y los adjuntos ya están en IndexedDB)
+  // y se recupera al volver de Google.
   session.set('pending', d);
+  keepAwake(true);
   try {
-    const res = await gapi('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: { raw: base64url(buildMime(d)) } }),
-    });
+    const res = files.length
+      ? await gapi('https://gmail.googleapis.com/upload/gmail/v1/users/me/drafts?uploadType=media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'message/rfc822' },
+          body: await buildMimeWithFiles(d, files),
+        })
+      : await gapi('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: { raw: base64url(buildMime(d)) } }),
+        });
+    keepAwake(false);
     session.del('pending');
+    clearFiles();
     draft = null;
     const msgId = res.message && res.message.id;
     const email = store.get('email') || '';
     $('dLink').href = 'https://mail.google.com/mail/?authuser=' + encodeURIComponent(email) + '#drafts' + (msgId ? '?compose=' + msgId : '');
     show('vDone');
   } catch (e) {
+    keepAwake(false);
     if (e instanceof AuthExpired) { busy('Renovando la sesión de Google…'); return authorize([SCOPE_GMAIL], 'save'); }
     session.del('pending');
     draft = d; renderPreview();
@@ -711,6 +918,11 @@ $('btnNew').onclick = () => newDraft(false);
 (async function boot() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   if (!configured()) { history.replaceState(null, '', location.pathname); return openSettings(); }
+
+  // Si venimos de «Compartir» desde otra app, el service worker ya dejó los archivos en IndexedDB.
+  const shared = new URLSearchParams(location.search).get('shared');
+  if (shared !== null) history.replaceState(null, '', location.pathname + location.hash);
+  await loadFiles();
 
   const ret = readRedirect();
 
@@ -746,6 +958,7 @@ $('btnNew').onclick = () => newDraft(false);
   }
 
   routeHome();
+  if (shared === 'error') $('recErr').textContent = 'No se pudieron recibir los archivos compartidos. Adjúntalos con el botón.';
   if (ret && ret.error) {
     const target = $('vLogin').classList.contains('on') ? 'loginErr' : 'recErr';
     $(target).textContent = ret.error;
