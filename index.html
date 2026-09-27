@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F4A42">
+<title>Dictar correo · Gmail</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #EDF0F4; --surface: #FFFFFF; --ink: #16233A; --muted: #5B6679;
+  --line: #D3D9E2; --rec: #D7362E; --go: #2F5FD0; --warn-bg: #FFF4DB; --warn-ink: #6B4A00;
+  --radius-field: 10px;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10151F; --surface: #1A2230; --ink: #E8ECF2; --muted: #97A2B4;
+    --line: #2C3748; --rec: #F0564E; --go: #7A9CF2; --warn-bg: #3A2F12; --warn-ink: #F3D48A;
+  }
+}
+*, *::before, *::after { box-sizing: inherit; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 17px/1.5 "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex; flex-direction: column;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--go); outline-offset: 2px; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px 6px;
+}
+header h1 { font-size: 1.05rem; margin: 0; font-weight: 700; }
+header .who { font-size: .85rem; color: var(--muted); }
+.icon-btn {
+  background: none; border: 0; padding: 8px; border-radius: 50%;
+  width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted);
+}
+
+main { flex: 1; overflow-y: auto; padding: 8px 18px 24px; }
+.view { display: none; }
+.view.on { display: block; }
+
+/* Transcripción en vivo: el texto es el protagonista */
+.live {
+  font-size: 1.55rem; line-height: 1.35; min-height: 40vh;
+  padding-top: 8vh; overflow-wrap: anywhere;
+}
+.live .interim { color: var(--muted); }
+.live .placeholder { color: var(--muted); font-size: 1.25rem; }
+
+.hint { color: var(--muted); font-size: .95rem; }
+.center { text-align: center; }
+
+/* Formulario del borrador */
+.field { margin-bottom: 16px; }
+.field > label, .field > .label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+.field input, .field textarea, .field select {
+  width: 100%; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-field); padding: 11px 12px;
+}
+.field textarea { min-height: 220px; resize: vertical; line-height: 1.55; }
+.recip { display: grid; gap: 6px; margin-bottom: 8px; }
+.recip .line { display: flex; gap: 6px; align-items: center; }
+.recip .line input { flex: 1; min-width: 0; }
+.rm { flex: none; width: 44px; height: 44px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-field); color: var(--muted); font-size: 1.3rem; line-height: 1; }
+.add { background: none; border: 0; padding: 6px 0; color: var(--go); font-weight: 700; font-size: .92rem; }
+.btn.plain { background: none; border-color: var(--line); color: var(--muted); }
+.recip .name { font-weight: 700; font-size: .95rem; }
+.sugg { display: grid; gap: 6px; }
+.sugg:empty { display: none; }
+.sugg .hint { font-size: .88rem; }
+.chip {
+  text-align: left; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-field); padding: 9px 12px; display: grid; gap: 1px;
+}
+.chip span { font-size: .88rem; color: var(--muted); overflow-wrap: anywhere; }
+.chip.consent { border-color: var(--go); color: var(--go); font-weight: 700; }
+.recip input.missing { border-color: var(--rec); }
+.tone { display: inline-block; font-size: .85rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; margin-bottom: 14px; }
+.note { background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius-field); padding: 10px 12px; font-size: .95rem; margin-bottom: 16px; }
+details.transcript { margin-top: 8px; font-size: .9rem; color: var(--muted); }
+details.transcript p { white-space: pre-wrap; }
+
+/* Barra inferior en la zona del pulgar */
+footer {
+  padding: 12px 18px 18px; background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+.rec-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.rec {
+  position: relative; width: 88px; height: 88px; border-radius: 50%;
+  border: 0; background: var(--rec); display: grid; place-items: center;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--rec) 18%, transparent);
+}
+.rec::after { /* punto → cuadrado al grabar */
+  content: ""; width: 30px; height: 30px; background: #fff; border-radius: 50%;
+  transition: border-radius .18s ease, width .18s ease, height .18s ease;
+}
+.rec.on::after { border-radius: 6px; width: 28px; height: 28px; }
+.rec.on::before {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%;
+  border: 3px solid var(--rec); animation: pulse 1.4s ease-out infinite;
+}
+@keyframes pulse { from { transform: scale(1); opacity: .9; } to { transform: scale(1.35); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .rec.on::before { animation: none; opacity: .6; } .rec::after { transition: none; } }
+.rec:disabled { opacity: .45; }
+.rec-label { font-size: .95rem; color: var(--muted); min-height: 1.5em; }
+
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 12px;
+  padding: 13px 14px; font-weight: 700; min-height: 50px;
+}
+.btn.primary { background: var(--go); border-color: var(--go); color: #fff; grid-column: 1 / -1; }
+.btn:disabled { opacity: .5; }
+.btn.wide { width: 100%; }
+
+.spinner {
+  width: 36px; height: 36px; border-radius: 50%; margin: 18vh auto 16px;
+  border: 4px solid var(--line); border-top-color: var(--go); animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+.done-mark { font-size: 2.6rem; margin-top: 14vh; }
+.err { color: var(--rec); font-size: .95rem; margin: 8px 0; white-space: pre-wrap; }
+.stack > * + * { margin-top: 12px; }
+a { color: var(--go); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Dictar correo · Gmail</h1>
+    <div class="who" id="who"></div>
+  </div>
+  <button class="icon-btn" id="btnSettings" aria-label="Ajustes">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</header>
+
+<main id="main">
+  <!-- Ajustes -->
+  <section class="view" id="vSettings">
+    <p class="hint">Estos datos se guardan solo en este móvil.</p>
+    <div class="field"><label for="sClient">Client ID de Google</label><input id="sClient" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false"></div>
+    <div class="field"><label for="sWorker">URL del proxy</label><input id="sWorker" type="url" placeholder="https://voice-drafts.tu-cuenta.workers.dev" autocomplete="off" spellcheck="false"></div>
+    <div class="field"><label for="sToken">Token de la app</label><input id="sToken" type="password" autocomplete="off"></div>
+    <div class="field"><label for="sName">Tu nombre para la firma</label><input id="sName" autocomplete="name"></div>
+    <div class="field"><label for="sLang">Idioma del dictado</label>
+      <select id="sLang"><option value="es-ES">Español (España)</option><option value="es-MX">Español (México)</option><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="ca-ES">Català</option></select>
+    </div>
+    <p class="hint">En Google Cloud → Clientes, estos dos valores deben coincidir exactamente:<br>
+      Origen de JavaScript: <strong id="originShow"></strong><br>
+      URI de redirección: <strong id="redirectShow"></strong></p>
+    <div class="err" id="settingsErr"></div>
+    <div id="signOutWrap" hidden>
+      <p class="hint">Sesión iniciada como <strong id="signedAs"></strong>.</p>
+      <button class="btn plain wide" id="btnSignOut" type="button">Cerrar sesión de Google</button>
+    </div>
+  </section>
+
+  <!-- Iniciar sesión -->
+  <section class="view" id="vLogin">
+    <div class="stack center" style="margin-top:16vh">
+      <p>Inicia sesión con tu cuenta de Google para guardar borradores en tu Gmail.</p>
+      <button class="btn primary wide" id="btnLogin">Iniciar sesión con Google</button>
+      <p class="hint">Google avisará de que la app no está verificada: pulsa <em>Configuración avanzada</em> y continúa. Marca todas las casillas de permisos.</p>
+      <div class="err" id="loginErr"></div>
+    </div>
+  </section>
+
+  <!-- Grabación -->
+  <section class="view" id="vRecord">
+    <div class="live" id="live" aria-live="polite"></div>
+    <div class="err" id="recErr"></div>
+  </section>
+
+  <!-- Procesando -->
+  <section class="view" id="vBusy">
+    <div class="spinner" role="status" aria-label="Procesando"></div>
+    <p class="center hint" id="busyText">Preparando el borrador…</p>
+  </section>
+
+  <!-- Vista previa -->
+  <section class="view" id="vPreview">
+    <div class="note" id="pNote" hidden></div>
+    <span class="tone" id="pTone" hidden></span>
+    <div class="field"><span class="label">Para</span><div id="pTo"></div>
+      <button class="add" type="button" id="addTo">+ Añadir destinatario</button></div>
+    <div class="field"><span class="label" id="pCcLabel">CC</span><div id="pCc"></div>
+      <button class="add" type="button" id="addCc">+ Añadir en copia</button></div>
+    <div class="field"><label for="pSubject">Asunto</label><input id="pSubject"></div>
+    <div class="field"><label for="pBody">Mensaje</label><textarea id="pBody"></textarea></div>
+    <div class="err" id="pErr"></div>
+    <details class="transcript"><summary>Lo que dictaste</summary><p id="pTranscript"></p></details>
+  </section>
+
+  <!-- Guardado -->
+  <section class="view" id="vDone">
+    <div class="center stack">
+      <div class="done-mark" aria-hidden="true">✓</div>
+      <p><strong>Guardado en Borradores.</strong><br><span class="hint">Revísalo y envíalo desde Gmail.</span></p>
+      <a class="btn wide" id="dLink" href="#" target="_blank" rel="noopener" style="display:block;text-decoration:none">Abrir en Gmail</a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="rec-wrap" id="fRecord">
+    <button class="rec" id="btnRec" aria-label="Empezar a dictar"></button>
+    <div class="rec-label" id="recLabel">Pulsa para dictar</div>
+  </div>
+  <div class="actions" id="fPreview" hidden>
+    <button class="btn primary" id="btnSave">Guardar en Borradores</button>
+    <button class="btn" id="btnRedo">Volver a dictar</button>
+    <button class="btn" id="btnDiscard">Descartar</button>
+  </div>
+  <div id="fSettings" hidden><button class="btn primary wide" id="btnSaveSettings">Guardar ajustes</button></div>
+  <div id="fDone" hidden><button class="btn primary wide" id="btnNew">Dictar otro correo</button></div>
+  <div id="fNone" hidden></div>
+</footer>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const SCOPE_GMAIL = 'https://www.googleapis.com/auth/gmail.compose';
+const SCOPES_CONTACTS = ['https://www.googleapis.com/auth/contacts.readonly', 'https://www.googleapis.com/auth/contacts.other.readonly'];
+const REDIRECT_URI = location.origin + location.pathname.replace(/index\.html$/, '');
+const isAndroid = /Android/i.test(navigator.userAgent);
+const PLACEHOLDER = 'Di a quién va, de qué trata y lo que quieres contar. Por ejemplo: «Correo a Marta López, marta punto lopez arroba gmail punto com, sobre la reunión del jueves…»';
+
+// ---------- Almacenamiento (prefijo propio para no mezclarse con la app de Outlook) ----------
+const store = {
+  get(k, d = null) { try { const v = localStorage.getItem('vdg:' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('vdg:' + k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem('vdg:' + k); } catch {} },
+};
+const session = {
+  get(k) { try { return JSON.parse(sessionStorage.getItem('vdg:' + k)); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem('vdg:' + k, JSON.stringify(v)); } catch {} },
+  del(k) { try { sessionStorage.removeItem('vdg:' + k); } catch {} },
+};
+let settings = store.get('settings', {});
+const configured = () => settings.clientId && settings.workerUrl && settings.appToken;
+
+// ---------- Vistas ----------
+const FOOTERS = { vSettings: 'fSettings', vLogin: 'fNone', vRecord: 'fRecord', vBusy: 'fNone', vPreview: 'fPreview', vDone: 'fDone' };
+function show(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === view));
+  ['fRecord', 'fPreview', 'fSettings', 'fDone', 'fNone'].forEach(f => $(f).hidden = f !== FOOTERS[view]);
+  $('main').scrollTop = 0;
+}
+function busy(text) { $('busyText').textContent = text; show('vBusy'); }
+
+// ---------- Ajustes ----------
+function openSettings() {
+  $('sClient').value = settings.clientId || '';
+  $('sWorker').value = settings.workerUrl || '';
+  $('sToken').value = settings.appToken || '';
+  $('sName').value = settings.senderName || '';
+  $('sLang').value = settings.lang || 'es-ES';
+  $('originShow').textContent = location.origin;
+  $('redirectShow').textContent = REDIRECT_URI;
+  $('settingsErr').textContent = '';
+  const email = store.get('email');
+  $('signOutWrap').hidden = !email;
+  $('signedAs').textContent = email || '';
+  show('vSettings');
+}
+$('btnSettings').onclick = () => { if (recording) stopRecording(false); openSettings(); };
+$('btnSaveSettings').onclick = () => {
+  const next = {
+    clientId: $('sClient').value.trim(),
+    workerUrl: $('sWorker').value.trim().replace(/\/+$/, ''),
+    appToken: $('sToken').value.trim(),
+    senderName: $('sName').value.trim(),
+    lang: $('sLang').value,
+  };
+  if (!next.clientId || !next.workerUrl || !next.appToken) {
+    $('settingsErr').textContent = 'Rellena el Client ID, la URL del proxy y el token para continuar.'; return;
+  }
+  if (!/\.apps\.googleusercontent\.com$/.test(next.clientId)) {
+    $('settingsErr').textContent = 'El Client ID debe terminar en .apps.googleusercontent.com. Cópialo de Google Cloud → Clientes.'; return;
+  }
+  if (next.clientId !== settings.clientId) clearAuth();
+  settings = next; store.set('settings', settings);
+  routeHome();
+};
+$('btnSignOut').onclick = async () => {
+  const a = store.get('auth');
+  clearAuth();
+  if (a && a.token) { try { await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(a.token), { method: 'POST' }); } catch {} }
+  routeHome();
+};
+
+// ---------- Google OAuth (flujo por redirección, sin librerías) ----------
+function clearAuth() { store.del('auth'); store.del('email'); session.del('pending'); session.del('pendingPreview'); }
+const auth = () => store.get('auth');
+const granted = scopes => { const a = auth(); return !!a && scopes.every(s => a.scopes.includes(s)); };
+const tokenValid = (marginMs = 60000) => { const a = auth(); return !!a && a.exp - Date.now() > marginMs; };
+
+function authorize(scopes, purpose, { chooseAccount = false } = {}) {
+  const state = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+  session.set('oauth', { state, purpose });
+  const p = new URLSearchParams({
+    client_id: settings.clientId,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'token',
+    scope: scopes.join(' '),
+    include_granted_scopes: 'true',
+    state,
+  });
+  const email = store.get('email');
+  if (chooseAccount || !email) p.set('prompt', 'select_account');
+  else p.set('login_hint', email);
+  location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + p);
+  return new Promise(() => {}); // la página se redirige
+}
+
+// Al volver de Google, el resultado llega en el fragmento (#access_token=… o #error=…).
+function readRedirect() {
+  const h = location.hash.slice(1);
+  if (!/(^|&)(access_token|error)=/.test(h)) return null;
+  history.replaceState(null, '', location.pathname + location.search);
+  const p = new URLSearchParams(h);
+  const saved = session.get('oauth'); session.del('oauth');
+  if (!saved || p.get('state') !== saved.state) return { error: 'La respuesta de Google no corresponde a esta sesión. Vuelve a intentarlo.' };
+  if (p.get('error')) {
+    const e = p.get('error');
+    return { purpose: saved.purpose, error: e === 'access_denied' ? 'Has cancelado el acceso o tu cuenta no está en los usuarios de prueba.' : 'Google respondió: ' + e };
+  }
+  store.set('auth', {
+    token: p.get('access_token'),
+    exp: Date.now() + (parseInt(p.get('expires_in'), 10) || 3600) * 1000,
+    scopes: (p.get('scope') || '').split(' ').filter(Boolean),
+  });
+  return { purpose: saved.purpose, ok: true };
+}
+
+class AuthExpired extends Error {}
+async function gapi(url, opts = {}) {
+  const a = auth();
+  if (!a || !tokenValid(0)) throw new AuthExpired('La sesión de Google ha caducado.');
+  const res = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + a.token, ...(opts.headers || {}) } });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { const b = auth(); if (b) { b.exp = 0; store.set('auth', b); } throw new AuthExpired('La sesión de Google ha caducado.'); }
+  if (!res.ok) throw new Error((data.error && data.error.message) || 'Google respondió ' + res.status);
+  return data;
+}
+
+$('btnLogin').onclick = () => authorize([SCOPE_GMAIL, ...SCOPES_CONTACTS], 'login', { chooseAccount: true });
+
+function routeHome() {
+  if (!configured()) return openSettings();
+  const email = store.get('email');
+  $('who').textContent = email || '';
+  if (!email || !granted([SCOPE_GMAIL])) return show('vLogin');
+  resetRecordView();
+  show('vRecord');
+}
+
+// ---------- Dictado (Web Speech API) ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recording = false, finalText = '', interimText = '';
+
+function renderLive() {
+  const live = $('live');
+  if (!finalText && !interimText) return;
+  live.textContent = '';
+  live.append(document.createTextNode(finalText));
+  if (interimText) { const s = document.createElement('span'); s.className = 'interim'; s.textContent = interimText; live.append(s); }
+  $('main').scrollTop = $('main').scrollHeight;
+}
+function resetRecordView() {
+  finalText = ''; interimText = '';
+  const ph = document.createElement('span'); ph.className = 'placeholder'; ph.textContent = PLACEHOLDER;
+  $('live').replaceChildren(ph);
+  $('recErr').textContent = '';
+  setRecUI(false);
+}
+function setRecUI(on) {
+  $('btnRec').classList.toggle('on', on);
+  $('btnRec').setAttribute('aria-label', on ? 'Terminar y preparar borrador' : 'Empezar a dictar');
+  $('recLabel').textContent = on ? 'Escuchando… pulsa para terminar' : 'Pulsa para dictar';
+}
+
+function startRecording() {
+  if (!SR) { $('recErr').textContent = 'Este navegador no permite dictado. Abre la app en Chrome para Android.'; return; }
+  // Si el acceso a Google caduca en menos de 10 minutos, se renueva ahora, antes de dictar,
+  // para no tener que salir de la app a mitad del borrador.
+  if (!tokenValid(10 * 60000)) { busy('Renovando la sesión de Google…'); authorize([SCOPE_GMAIL], 'refresh'); return; }
+  finalText = ''; interimText = ''; $('recErr').textContent = '';
+  rec = new SR();
+  rec.lang = settings.lang || 'es-ES';
+  rec.interimResults = true;
+  // En Android el modo continuo duplica frases; se usa modo frase a frase y se reinicia solo.
+  rec.continuous = !isAndroid;
+  rec.onresult = e => {
+    interimText = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalText += (finalText && !finalText.endsWith(' ') ? ' ' : '') + t.trim() + ' ';
+      else interimText += t;
+    }
+    renderLive();
+  };
+  rec.onerror = e => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      $('recErr').textContent = 'Sin acceso al micrófono. Permítelo en los ajustes del sitio en Chrome.';
+    } else if (e.error === 'network') {
+      $('recErr').textContent = 'El dictado necesita conexión a internet.';
+    } else {
+      $('recErr').textContent = 'Error de dictado: ' + e.error;
+    }
+    recording = false; setRecUI(false);
+  };
+  rec.onend = () => { if (recording) { try { rec.start(); } catch {} } };
+  try { rec.start(); recording = true; setRecUI(true); }
+  catch (e) { $('recErr').textContent = 'No se pudo empezar a dictar: ' + e.message; }
+}
+function stopRecording(process = true) {
+  recording = false; setRecUI(false);
+  try { rec && rec.stop(); } catch {}
+  if (!process) return;
+  // Pequeña espera para recoger el último resultado final
+  setTimeout(() => {
+    const text = (finalText + ' ' + interimText).replace(/\s+/g, ' ').trim();
+    if (!text) { $('recErr').textContent = 'No se ha oído nada. Prueba otra vez, un poco más cerca del micrófono.'; return; }
+    buildDraft(text);
+  }, 700);
+}
+$('btnRec').onclick = () => recording ? stopRecording(true) : startRecording();
+
+// ---------- Claude (vía proxy) ----------
+function todayText() {
+  const d = new Date(), pad = n => String(n).padStart(2, '0');
+  const iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  return iso + ' (' + d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ')';
+}
+let draft = null;
+async function buildDraft(transcript) {
+  busy('Preparando el borrador…');
+  try {
+    const res = await fetch(settings.workerUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Token': settings.appToken },
+      body: JSON.stringify({ transcript, senderName: settings.senderName || '', today: todayText() }),
+    });
+    const data = await res.json().catch(() => ({ error: 'Respuesta no válida del proxy (' + res.status + ')' }));
+    if (!res.ok || data.error) throw new Error((data.error || 'El proxy respondió ' + res.status) + (data.detail ? '\n' + data.detail : ''));
+    draft = { ...data, transcript };
+    renderPreview();
+  } catch (e) {
+    show('vRecord');
+    finalText = transcript; renderLive();
+    $('recErr').textContent = 'No se pudo preparar el borrador. ' + (e.message || e) + '\nComprueba la URL del proxy y el token en Ajustes.';
+  }
+}
+
+// ---------- Vista previa: destinatarios ----------
+const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s).trim());
+function addRecipientRow(container, r = {}) {
+  const row = document.createElement('div'); row.className = 'recip';
+  if (r.name) { const n = document.createElement('div'); n.className = 'name'; n.textContent = r.name; row.append(n); }
+  const line = document.createElement('div'); line.className = 'line';
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.inputMode = 'email'; inp.autocomplete = 'off'; inp.spellcheck = false;
+  inp.setAttribute('autocapitalize', 'off');
+  inp.placeholder = r.name ? 'Email de ' + r.name : 'Nombre o email';
+  inp.value = r.email || ''; inp.dataset.name = r.name || '';
+  if (!isEmail(inp.value)) inp.classList.add('missing');
+  const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm'; rm.textContent = '×';
+  rm.setAttribute('aria-label', 'Quitar ' + (r.name || 'destinatario'));
+  rm.onclick = () => { inp._seq = (inp._seq || 0) + 1; row.remove(); };
+  line.append(inp, rm);
+  const box = document.createElement('div'); box.className = 'sugg';
+  let timer = null;
+  inp.oninput = () => {
+    inp.classList.toggle('missing', !isEmail(inp.value));
+    clearTimeout(timer);
+    const q = inp.value.trim();
+    if (q.length >= 2 && !q.includes('@')) timer = setTimeout(() => lookup(inp, box, q, false), 350);
+    else { inp._seq = (inp._seq || 0) + 1; box.replaceChildren(); }
+  };
+  row.append(line, box); container.append(row);
+  if (!r.email && r.name) lookup(inp, box, r.name, true);
+  return inp;
+}
+function recipientRows(list, container, atLeastOne) {
+  container.replaceChildren();
+  const rows = list.length ? list : (atLeastOne ? [{}] : []);
+  rows.forEach(r => addRecipientRow(container, r));
+}
+$('addTo').onclick = () => addRecipientRow($('pTo')).focus();
+$('addCc').onclick = () => addRecipientRow($('pCc')).focus();
+function collectRecipients(container) {
+  return [...container.querySelectorAll('input')]
+    .map(i => ({ name: i.dataset.name || '', email: i.value.trim() }))
+    .filter(r => r.email || r.name); // las filas vacías se ignoran
+}
+
+// ---------- Búsqueda de contactos (People API) ----------
+let warmed = null;
+function warmUp() {
+  // Google exige una búsqueda vacía previa para preparar la caché de búsqueda.
+  if (!warmed) warmed = Promise.allSettled([
+    gapi('https://people.googleapis.com/v1/people:searchContacts?query=&readMask=names'),
+    gapi('https://people.googleapis.com/v1/otherContacts:search?query=&readMask=names'),
+  ]);
+  return warmed;
+}
+async function searchPeople(q) {
+  if (!granted(SCOPES_CONTACTS)) return null; // falta el permiso
+  await warmUp();
+  const enc = encodeURIComponent(q);
+  const [saved, other] = await Promise.allSettled([
+    gapi('https://people.googleapis.com/v1/people:searchContacts?pageSize=10&readMask=names,emailAddresses,organizations&query=' + enc),
+    gapi('https://people.googleapis.com/v1/otherContacts:search?pageSize=10&readMask=names,emailAddresses&query=' + enc),
+  ]);
+  if (saved.status === 'rejected' && other.status === 'rejected') throw saved.reason;
+  const out = [], seen = new Set();
+  const add = (res, source) => {
+    if (res.status !== 'fulfilled') return;
+    (res.value.results || []).forEach(({ person = {} }) => {
+      const name = ((person.names || [])[0] || {}).displayName || '';
+      const org = (person.organizations || [])[0] || {};
+      const detail = [org.title, org.name].filter(Boolean).join(', ') || source;
+      (person.emailAddresses || []).forEach(e => {
+        const email = (e.value || '').trim();
+        if (email && !seen.has(email.toLowerCase())) { seen.add(email.toLowerCase()); out.push({ name: name || email, email, detail }); }
+      });
+    });
+  };
+  add(saved, 'Contacto guardado');
+  add(other, 'Le has escrito antes');
+  return out.slice(0, 5);
+}
+function hintEl(text) { const s = document.createElement('span'); s.className = 'hint'; s.textContent = text; return s; }
+
+async function lookup(inp, box, q, auto) {
+  const seq = inp._seq = (inp._seq || 0) + 1;
+  box.replaceChildren(hintEl('Buscando en tus contactos…'));
+  let list;
+  try { list = await searchPeople(q); }
+  catch (e) { if (seq === inp._seq) box.replaceChildren(hintEl('No se pudo buscar: ' + (e.message || e))); return; }
+  if (seq !== inp._seq) return; // hubo una búsqueda más reciente
+  box.replaceChildren();
+  if (list === null) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip consent';
+    b.textContent = 'Permitir buscar en tus contactos';
+    b.onclick = () => { session.set('pendingPreview', snapshotPreview()); authorize(SCOPES_CONTACTS, 'contacts'); };
+    box.append(b); return;
+  }
+  if (!list.length) { box.append(hintEl('«' + q + '» no aparece en tus contactos. Escribe el email.')); return; }
+  if (auto && list.length === 1) { pick(inp, box, list[0]); return; }
+  list.forEach(p => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip';
+    const n = document.createElement('strong'); n.textContent = p.name;
+    const e = document.createElement('span'); e.textContent = p.email;
+    const d = document.createElement('span'); d.textContent = p.detail;
+    b.append(n, e, d);
+    b.onclick = () => pick(inp, box, p);
+    box.append(b);
+  });
+}
+function pick(inp, box, p) {
+  inp._seq = (inp._seq || 0) + 1;
+  inp.value = p.email; inp.dataset.name = p.name; inp.classList.remove('missing');
+  const row = inp.closest('.recip');
+  let n = row.querySelector('.name');
+  if (!n) { n = document.createElement('div'); n.className = 'name'; row.prepend(n); }
+  n.textContent = p.name;
+  box.replaceChildren(hintEl('Encontrado en tus contactos: ' + p.detail.toLowerCase()));
+}
+
+function renderPreview() {
+  const d = draft;
+  $('pNote').hidden = !d.notes; $('pNote').textContent = d.notes || '';
+  $('pTone').hidden = !d.tone; $('pTone').textContent = 'Tono: ' + d.tone;
+  recipientRows(d.to || [], $('pTo'), true);
+  recipientRows(d.cc || [], $('pCc'), false);
+  $('pSubject').value = d.subject || '';
+  $('pBody').value = d.body || '';
+  $('pTranscript').textContent = d.transcript || '';
+  $('pErr').textContent = '';
+  $('btnSave').disabled = false;
+  show('vPreview');
+}
+function snapshotPreview() {
+  return { ...draft, to: collectRecipients($('pTo')), cc: collectRecipients($('pCc')), subject: $('pSubject').value, body: $('pBody').value };
+}
+function newDraft(thenRecord) {
+  draft = null; session.del('pending'); session.del('pendingPreview');
+  resetRecordView(); show('vRecord');
+  if (thenRecord) startRecording();
+}
+$('btnDiscard').onclick = () => newDraft(false);
+$('btnRedo').onclick = () => newDraft(true);
+
+// ---------- Gmail: crear borrador ----------
+function b64(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+const ascii = s => /^[\x20-\x7e]*$/.test(s);
+const header = s => ascii(s) ? s : '=?UTF-8?B?' + b64(s) + '?=';
+const address = r => {
+  const name = (r.name || '').replace(/[\r\n"\\]/g, '').trim();
+  if (!name || name.toLowerCase() === r.email.toLowerCase()) return r.email;
+  return (ascii(name) ? '"' + name + '"' : header(name)) + ' <' + r.email + '>';
+};
+const wrap = s => s.replace(/.{1,76}/g, '$&\r\n');
+const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const toHtml = text => text.trim().split(/\n{2,}/).map(p => '<p>' + esc(p).replace(/\n/g, '<br>') + '</p>').join('');
+
+function buildMime(d) {
+  const boundary = 'vdg' + Date.now().toString(36);
+  const text = d.body.trim().replace(/\r?\n/g, '\r\n');
+  const lines = ['MIME-Version: 1.0', 'To: ' + d.to.map(address).join(', ')];
+  if (d.cc.length) lines.push('Cc: ' + d.cc.map(address).join(', '));
+  lines.push('Subject: ' + header(d.subject.replace(/[\r\n]+/g, ' ').trim()),
+    'Content-Type: multipart/alternative; boundary="' + boundary + '"', '',
+    '--' + boundary, 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '', wrap(b64(text)),
+    '--' + boundary, 'Content-Type: text/html; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '', wrap(b64(toHtml(d.body))),
+    '--' + boundary + '--', '');
+  return lines.join('\r\n');
+}
+const base64url = s => b64(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+$('btnSave').onclick = async () => {
+  const d = snapshotPreview();
+  const bad = [...d.to, ...d.cc].filter(r => !isEmail(r.email));
+  if (!d.to.length || bad.length) {
+    $('pErr').textContent = bad.length ? 'Falta o no es válido el email de: ' + bad.map(r => r.name || r.email || 'un destinatario').join(', ') + '.' : 'Añade al menos un destinatario.';
+    return;
+  }
+  $('btnSave').disabled = true;
+  await saveToGmail(d);
+};
+
+async function saveToGmail(d) {
+  busy('Guardando en Borradores…');
+  // Si hay que renovar la sesión, el borrador se guarda aquí y se recupera al volver de Google.
+  session.set('pending', d);
+  try {
+    const res = await gapi('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: { raw: base64url(buildMime(d)) } }),
+    });
+    session.del('pending');
+    draft = null;
+    const msgId = res.message && res.message.id;
+    const email = store.get('email') || '';
+    $('dLink').href = 'https://mail.google.com/mail/?authuser=' + encodeURIComponent(email) + '#drafts' + (msgId ? '?compose=' + msgId : '');
+    show('vDone');
+  } catch (e) {
+    if (e instanceof AuthExpired) { busy('Renovando la sesión de Google…'); return authorize([SCOPE_GMAIL], 'save'); }
+    session.del('pending');
+    draft = d; renderPreview();
+    $('pErr').textContent = 'No se pudo guardar: ' + (e.message || e);
+  }
+}
+$('btnNew').onclick = () => newDraft(false);
+
+// ---------- Arranque ----------
+(async function boot() {
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (!configured()) { history.replaceState(null, '', location.pathname); return openSettings(); }
+
+  const ret = readRedirect();
+
+  // Tras el primer inicio de sesión, se guarda el email de la cuenta (sirve de pista en las renovaciones).
+  if (ret && ret.ok && (ret.purpose === 'login' || !store.get('email'))) {
+    try { const prof = await gapi('https://gmail.googleapis.com/gmail/v1/users/me/profile'); store.set('email', prof.emailAddress); }
+    catch (e) { clearAuth(); show('vLogin'); $('loginErr').textContent = 'No se pudo leer tu cuenta de Gmail: ' + (e.message || e); return; }
+    if (!granted([SCOPE_GMAIL])) {
+      show('vLogin'); $('loginErr').textContent = 'Falta el permiso para crear borradores en Gmail. Vuelve a iniciar sesión y marca todas las casillas.'; return;
+    }
+  }
+  $('who').textContent = store.get('email') || '';
+
+  // Volvemos de conceder el permiso de contactos: se recupera la vista previa.
+  const pendingPreview = session.get('pendingPreview');
+  if (pendingPreview) {
+    session.del('pendingPreview');
+    draft = pendingPreview; renderPreview();
+    if (ret && ret.error) $('pErr').textContent = 'No se activó la búsqueda de contactos: ' + ret.error;
+    else if (!granted(SCOPES_CONTACTS)) $('pErr').textContent = 'No se activó la búsqueda de contactos: no marcaste las casillas de contactos.';
+    return;
+  }
+
+  // Volvemos de renovar la sesión para guardar: se guarda solo si la renovación fue bien
+  // (si no, se muestra el borrador con el error, sin volver a redirigir).
+  const pending = session.get('pending');
+  if (pending) {
+    if (ret && ret.ok && tokenValid()) return saveToGmail(pending);
+    session.del('pending');
+    draft = pending; renderPreview();
+    $('pErr').textContent = 'No se pudo guardar: ' + (ret && ret.error ? ret.error : 'la sesión de Google no se renovó.') + ' Pulsa Guardar para reintentarlo.';
+    return;
+  }
+
+  routeHome();
+  if (ret && ret.error) {
+    const target = $('vLogin').classList.contains('on') ? 'loginErr' : 'recErr';
+    $(target).textContent = ret.error;
+  }
+})();
+</script>
+</body>
+</html>
