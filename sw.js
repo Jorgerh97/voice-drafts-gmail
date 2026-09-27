@@ -1,6 +1,6 @@
 // Service worker: carga rápida, app instalable y recepción de archivos desde «Compartir» en Android.
 // Solo cachea los archivos de la propia app; las llamadas a Google y al proxy pasan siempre por la red.
-const CACHE = 'vdg-v3';
+const CACHE = 'vdg-v4';
 const FILES = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 
 self.addEventListener('install', e => {

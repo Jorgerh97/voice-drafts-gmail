@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0F4A42">
-<title>Dictar correo · Gmail</title>
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#172336" media="(prefers-color-scheme: dark)">
+<title>Dictar correo</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,8 +13,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #EDF0F4; --surface: #FFFFFF; --ink: #16233A; --muted: #5B6679;
-  --line: #D3D9E2; --rec: #D7362E; --go: #2F5FD0; --warn-bg: #FFF4DB; --warn-ink: #6B4A00;
+  /* Paleta Voracys. Los colores corporativos (--brand, --rec) se usan en superficies y gráficos;
+     para texto y botones con texto blanco se usan sus versiones oscuras (--go, --primary, --warn-ink),
+     porque el azul y el naranja del logotipo tienen poco contraste con el blanco. */
+  --brand: #60A4F4;      /* azul Voracys */
+  --rec: #FF7B0F;        /* naranja Voracys: botón de grabar */
+  --primary: #1F5FAE;    /* azul profundo: botón principal */
+  --go: #1F5FAE;         /* enlaces, foco, acciones secundarias */
+  --tint: #EAF3FE; --focus-ring: #CFE3FC;
+  --bg: #F4F8FD; --surface: #FFFFFF; --bar: #FFFFFF; --ink: #16324F; --muted: #52627A; --interim: #7A8AA0;
+  --line: #D6E2F0; --err: #C62828; --warn-bg: #FFF1E4; --warn-ink: #8A3D00;
   --radius-field: 10px;
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top, 0px);
@@ -21,8 +30,10 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #10151F; --surface: #1A2230; --ink: #E8ECF2; --muted: #97A2B4;
-    --line: #2C3748; --rec: #F0564E; --go: #7A9CF2; --warn-bg: #3A2F12; --warn-ink: #F3D48A;
+    --primary: #2A68BA; --go: #8CBDF8;
+    --tint: #1A2F4D; --focus-ring: #26466F;
+    --bg: #0F1826; --surface: #172336; --bar: #172336; --ink: #E6EDF7; --muted: #9AA9BF; --interim: #7F8FA6;
+    --line: #2A3A52; --err: #FF7A7A; --warn-bg: #3A2610; --warn-ink: #FFC48C;
   }
 }
 *, *::before, *::after { box-sizing: inherit; }
@@ -40,16 +51,18 @@ button { cursor: pointer; }
 
 header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px 6px;
+  padding: 12px 18px 10px; background: var(--bar); border-bottom: 3px solid var(--brand);
 }
+header .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+header .brand svg { flex: none; }
 header h1 { font-size: 1.05rem; margin: 0; font-weight: 700; }
-header .who { font-size: .85rem; color: var(--muted); }
+header .who { font-size: .85rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon-btn {
   background: none; border: 0; padding: 8px; border-radius: 50%;
   width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted);
 }
 
-main { flex: 1; overflow-y: auto; padding: 8px 18px 24px; }
+main { flex: 1; overflow-y: auto; padding: 16px 18px 24px; }
 .view { display: none; }
 .view.on { display: block; }
 
@@ -58,7 +71,7 @@ main { flex: 1; overflow-y: auto; padding: 8px 18px 24px; }
   font-size: 1.55rem; line-height: 1.35; min-height: 40vh;
   padding-top: 8vh; overflow-wrap: anywhere;
 }
-.live .interim { color: var(--muted); }
+.live .interim { color: var(--interim); }
 .live .placeholder { color: var(--muted); font-size: 1.25rem; }
 
 .hint { color: var(--muted); font-size: .95rem; }
@@ -72,6 +85,9 @@ main { flex: 1; overflow-y: auto; padding: 8px 18px 24px; }
   border-radius: var(--radius-field); padding: 11px 12px;
 }
 .field textarea { min-height: 220px; resize: vertical; line-height: 1.55; }
+.field input:focus, .field textarea:focus, .field select:focus, .recip input:focus {
+  outline: none; border-color: var(--go); box-shadow: 0 0 0 2px var(--focus-ring);
+}
 .recip { display: grid; gap: 6px; margin-bottom: 8px; }
 .recip .line { display: flex; gap: 6px; align-items: center; }
 .recip .line input { flex: 1; min-width: 0; }
@@ -83,7 +99,7 @@ main { flex: 1; overflow-y: auto; padding: 8px 18px 24px; }
 #vRecord .att { margin-top: 12px; }
 .att-item { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-field); padding: 6px 6px 6px 8px; }
 .att-item img, .att-item .ext { width: 42px; height: 42px; border-radius: 6px; object-fit: cover; flex: none; }
-.att-item .ext { display: grid; place-items: center; background: var(--bg); color: var(--muted); font-size: .72rem; font-weight: 700; }
+.att-item .ext { display: grid; place-items: center; background: var(--tint); color: var(--go); font-size: .72rem; font-weight: 700; }
 .att-item .meta { flex: 1; min-width: 0; }
 .att-item .meta strong { display: block; font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .att-item .meta span { font-size: .82rem; color: var(--muted); }
@@ -100,15 +116,15 @@ main { flex: 1; overflow-y: auto; padding: 8px 18px 24px; }
 }
 .chip span { font-size: .88rem; color: var(--muted); overflow-wrap: anywhere; }
 .chip.consent { border-color: var(--go); color: var(--go); font-weight: 700; }
-.recip input.missing { border-color: var(--rec); }
-.tone { display: inline-block; font-size: .85rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; margin-bottom: 14px; }
+.recip input.missing { border-color: var(--err); }
+.tone { display: inline-block; font-size: .85rem; color: var(--go); background: var(--tint); border: 1px solid var(--brand); border-radius: 999px; padding: 2px 10px; margin-bottom: 14px; }
 .note { background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius-field); padding: 10px 12px; font-size: .95rem; margin-bottom: 16px; }
 details.transcript { margin-top: 8px; font-size: .9rem; color: var(--muted); }
 details.transcript p { white-space: pre-wrap; }
 
 /* Barra inferior en la zona del pulgar */
 footer {
-  padding: 12px 18px 18px; background: var(--bg);
+  padding: 12px 18px 18px; background: var(--bar);
   border-top: 1px solid var(--line);
 }
 .rec-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
@@ -136,7 +152,7 @@ footer {
   border: 1px solid var(--line); background: var(--surface); border-radius: 12px;
   padding: 13px 14px; font-weight: 700; min-height: 50px;
 }
-.btn.primary { background: var(--go); border-color: var(--go); color: #fff; grid-column: 1 / -1; }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; grid-column: 1 / -1; }
 .btn:disabled { opacity: .5; }
 .btn.wide { width: 100%; }
 
@@ -147,8 +163,8 @@ footer {
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 
-.done-mark { font-size: 2.6rem; margin-top: 14vh; }
-.err { color: var(--rec); font-size: .95rem; margin: 8px 0; white-space: pre-wrap; }
+.done-mark { font-size: 2.6rem; margin-top: 14vh; color: var(--go); }
+.err { color: var(--err); font-size: .95rem; margin: 8px 0; white-space: pre-wrap; }
 .stack > * + * { margin-top: 12px; }
 a { color: var(--go); }
 </style>
@@ -156,9 +172,12 @@ a { color: var(--go); }
 <body>
 
 <header>
-  <div>
-    <h1>Dictar correo · Gmail</h1>
-    <div class="who" id="who"></div>
+  <div class="brand">
+    <svg viewBox="0 0 30 24" width="30" height="24" aria-hidden="true"><path d="M8 0h5L5 24H0z M16 0h5l-8 24H8z M24 0h5l-8 24h-5z" fill="#60A4F4"/></svg>
+    <div style="min-width:0">
+      <h1>Dictar correo</h1>
+      <div class="who" id="who"></div>
+    </div>
   </div>
   <button class="icon-btn" id="btnSettings" aria-label="Ajustes">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
