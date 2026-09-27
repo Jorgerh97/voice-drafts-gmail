@@ -1,6 +1,6 @@
 // Service worker: carga rápida y app instalable. Solo cachea los archivos de la propia app;
 // las llamadas a Google, al proxy y a las fuentes pasan siempre por la red.
-const CACHE = 'vdg-v1';
+const CACHE = 'vdg-v2';
 const FILES = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
